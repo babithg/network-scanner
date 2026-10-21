@@ -1,0 +1,23 @@
+# Old copies and dated snapshots (see CLAUDE.md "Backups")
+backup/
+
+# Python virtualenv the service runs from; recreate with: python3 -m venv engine_code && engine_code/bin/pip install -r requirements.txt
+engine_code/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Logs and scan exports
+*.log
+*.xlsx
+
+# Editor and OS clutter
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Local Claude Code settings
+.claude/settings.local.json

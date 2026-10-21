@@ -1,0 +1,1556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#EDEFEA" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#141917" media="(prefers-color-scheme: dark)">
+    <title>Network scanner</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://cdn.sheetjs.com">
+    <link href="https://fonts.googleapis.com/css2?family=Recursive:wght,MONO@300..800,0..1&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            color-scheme: light dark;
+            --paper: #EDEFEA;
+            --surface: #F7F8F5;
+            --ink: #1D2422;
+            --muted: #5E6864;
+            --rule: #C5CCC6;
+            --cell-pending: #DDE2DC;
+            --cell-scanned: #9DAAA3;
+            --up: #1F7A4D;
+            --up-tint: rgba(31, 122, 77, 0.12);
+            --error: #B42318;
+            --error-tint: rgba(180, 35, 24, 0.08);
+            --focus: #1F5FA6;
+            --font: "Recursive", ui-sans-serif, system-ui, sans-serif;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --paper: #141917;
+                --surface: #1B211F;
+                --ink: #E3E8E4;
+                --muted: #95A09A;
+                --rule: #2E3733;
+                --cell-pending: #232B28;
+                --cell-scanned: #4A5751;
+                --up: #3DBE7A;
+                --up-tint: rgba(61, 190, 122, 0.14);
+                --error: #F07065;
+                --error-tint: rgba(240, 112, 101, 0.1);
+                --focus: #6FA8E8;
+            }
+        }
+
+        *, *::before, *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: var(--font);
+            font-size: 16px;
+            line-height: 1.5;
+            background: var(--paper);
+            color: var(--ink);
+            padding: 40px 40px 64px;
+        }
+
+        .mono {
+            font-variation-settings: "MONO" 1;
+            font-variant-numeric: tabular-nums;
+        }
+
+        button, input {
+            font: inherit;
+            color: inherit;
+            touch-action: manipulation;
+        }
+
+        :focus-visible {
+            outline: 2px solid var(--focus);
+            outline-offset: 2px;
+        }
+
+        .skip-link {
+            position: absolute;
+            left: 16px;
+            top: -48px;
+            padding: 8px 12px;
+            background: var(--ink);
+            color: var(--paper);
+            border-radius: 3px;
+            z-index: 10;
+        }
+
+        .skip-link:focus-visible {
+            top: 12px;
+        }
+
+        .page {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* Header + form */
+        header h1 {
+            font-size: 1.25rem;
+            font-weight: 700;
+            text-wrap: balance;
+        }
+
+        header p {
+            color: var(--muted);
+            max-width: 60ch;
+        }
+
+        .scan-form {
+            margin-top: 32px;
+        }
+
+        .scan-form label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .scan-row {
+            display: flex;
+            gap: 12px;
+            align-items: stretch;
+        }
+
+        #network {
+            flex: 1;
+            min-width: 0;
+            font-size: clamp(1.5rem, 4vw, 2.25rem);
+            font-weight: 500;
+            padding: 10px 16px;
+            background: var(--surface);
+            border: 2px solid var(--rule);
+            border-radius: 3px;
+            transition: border-color 0.15s ease;
+        }
+
+        #network::placeholder {
+            color: var(--muted);
+            opacity: 0.6;
+        }
+
+        #network:focus-visible {
+            outline: none;
+            border-color: var(--focus);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 30%, transparent);
+        }
+
+        #network[aria-invalid="true"] {
+            border-color: var(--error);
+        }
+
+        .btn {
+            padding: 0 28px;
+            font-size: 1rem;
+            font-weight: 650;
+            border-radius: 3px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background-color 0.15s ease, color 0.15s ease;
+        }
+
+        .btn-primary {
+            background: var(--ink);
+            color: var(--paper);
+            border: 2px solid var(--ink);
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: color-mix(in srgb, var(--ink) 85%, var(--paper));
+        }
+
+        .btn-primary:active:not(:disabled) {
+            background: color-mix(in srgb, var(--ink) 70%, var(--paper));
+        }
+
+        .btn-primary:disabled {
+            cursor: progress;
+            opacity: 0.55;
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--ink);
+            border: 2px solid var(--rule);
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            border-color: var(--ink);
+        }
+
+        .btn-secondary:active:not(:disabled) {
+            background: var(--cell-pending);
+        }
+
+        .btn-secondary:disabled {
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        [hidden] {
+            display: none !important;
+        }
+
+        .hint {
+            color: var(--muted);
+            font-size: 0.9375rem;
+            margin: -4px 0 10px;
+            max-width: 75ch;
+        }
+
+        .mode {
+            border: none;
+            margin-top: 14px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: stretch;
+            gap: 8px;
+        }
+
+        .mode legend {
+            float: left;
+            font-weight: 600;
+            margin-right: 8px;
+            padding-top: 9px;
+        }
+
+        .mode-option {
+            flex: 1 1 260px;
+            max-width: 420px;
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+            padding: 8px 12px;
+            border: 2px solid var(--rule);
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.9375rem;
+            color: var(--muted);
+            transition: border-color 0.15s ease;
+        }
+
+        .mode-option strong {
+            color: var(--ink);
+            margin-right: 4px;
+        }
+
+        .mode-option input {
+            margin-top: 4px;
+            accent-color: var(--ink);
+        }
+
+        .mode-option:hover {
+            border-color: var(--muted);
+        }
+
+        .mode-option:has(input:checked) {
+            border-color: var(--ink);
+            background: var(--surface);
+        }
+
+        .mode-option:has(input:focus-visible) {
+            outline: 2px solid var(--focus);
+            outline-offset: 2px;
+        }
+
+        .mode:disabled .mode-option {
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .form-meta {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            gap: 8px 24px;
+            margin-top: 10px;
+            font-size: 0.9375rem;
+        }
+
+        #validationMsg {
+            color: var(--muted);
+            min-height: 1.5em;
+        }
+
+        #validationMsg.is-error {
+            color: var(--error);
+        }
+
+        .examples {
+            color: var(--muted);
+            display: flex;
+            flex-wrap: wrap;
+            align-items: baseline;
+            gap: 4px 12px;
+        }
+
+        .example {
+            background: none;
+            border: none;
+            padding: 0;
+            color: var(--ink);
+            text-decoration: underline;
+            text-decoration-color: var(--rule);
+            text-underline-offset: 3px;
+            cursor: pointer;
+        }
+
+        .example:hover {
+            text-decoration-color: var(--ink);
+        }
+
+        /* Error */
+        .error-box {
+            margin-top: 24px;
+            padding: 12px 16px;
+            border-left: 4px solid var(--error);
+            background: var(--error-tint);
+            color: var(--error);
+            max-width: 80ch;
+        }
+
+        /* Address map */
+        .map-section {
+            margin-top: 40px;
+            padding-top: 32px;
+            border-top: 1px solid var(--rule);
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr);
+            gap: 24px 40px;
+            align-items: start;
+        }
+
+        .address-map {
+            display: grid;
+            grid-template-columns: repeat(var(--cols, 16), 22px);
+            gap: 3px;
+        }
+
+        .cell {
+            width: 22px;
+            aspect-ratio: 1;
+            border-radius: 2px;
+            background: var(--cell-pending);
+            border: none;
+            transition: background-color 0.2s ease;
+        }
+
+        .cell.scanned {
+            background: var(--cell-scanned);
+        }
+
+        .cell.live {
+            background: color-mix(in srgb, var(--up) 40%, var(--cell-pending));
+        }
+
+        .cell.up {
+            background: var(--up);
+            cursor: pointer;
+        }
+
+        .cell.up:hover {
+            box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--up);
+        }
+
+        .cell.active {
+            background: var(--focus);
+            animation: blink 0.9s ease-in-out infinite alternate;
+        }
+
+        @keyframes blink {
+            from { opacity: 1; }
+            to { opacity: 0.25; }
+        }
+
+        #timeMsg {
+            margin-top: 2px;
+            color: var(--muted);
+            font-size: 0.9375rem;
+            font-variant-numeric: tabular-nums;
+        }
+
+        #checkingMsg {
+            margin-top: 2px;
+            color: var(--focus);
+            font-size: 0.9375rem;
+        }
+
+        .readout h2 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            line-height: 1.2;
+            text-wrap: balance;
+            overflow-wrap: anywhere;
+        }
+
+        #statusMessage {
+            margin-top: 6px;
+            color: var(--muted);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .legend {
+            list-style: none;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px 20px;
+            margin-top: 20px;
+            font-size: 0.875rem;
+            color: var(--muted);
+        }
+
+        .legend li {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .legend .cell {
+            width: 12px;
+            animation: none;
+        }
+
+        .map-note {
+            margin-top: 8px;
+            font-size: 0.875rem;
+            color: var(--muted);
+        }
+
+        /* Results */
+        .results {
+            margin-top: 48px;
+        }
+
+        .results-bar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 12px 16px;
+            margin-bottom: 16px;
+        }
+
+        .results-bar h2 {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin-right: auto;
+            scroll-margin-top: 16px;
+        }
+
+        #searchInput {
+            width: 260px;
+            padding: 8px 12px;
+            background: var(--surface);
+            border: 1px solid var(--rule);
+            border-radius: 3px;
+        }
+
+        #searchInput:focus-visible {
+            outline: none;
+            border-color: var(--focus);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 30%, transparent);
+        }
+
+        #exportBtn {
+            padding: 8px 16px;
+        }
+
+        .table-wrap {
+            overflow-x: auto;
+            border-top: 2px solid var(--ink);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9375rem;
+        }
+
+        th {
+            text-align: left;
+            font-weight: 600;
+            white-space: nowrap;
+            border-bottom: 1px solid var(--rule);
+        }
+
+        th button {
+            width: 100%;
+            text-align: left;
+            background: none;
+            border: none;
+            padding: 10px 12px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            gap: 6px;
+            align-items: baseline;
+        }
+
+        th button:hover {
+            background: var(--cell-pending);
+        }
+
+        th .sort-mark {
+            color: var(--muted);
+            font-size: 0.75rem;
+        }
+
+        td {
+            padding: 12px;
+            vertical-align: top;
+            border-bottom: 1px solid var(--rule);
+        }
+
+        tbody tr {
+            content-visibility: auto;
+            contain-intrinsic-size: auto 52px;
+        }
+
+        tbody tr:hover {
+            background: var(--surface);
+        }
+
+        tr.flash {
+            animation: flash 1.2s ease-out;
+        }
+
+        @keyframes flash {
+            from { background: var(--up-tint); }
+            to { background: transparent; }
+        }
+
+        .cell-ip {
+            font-weight: 650;
+            white-space: nowrap;
+        }
+
+        .cell-host,
+        .cell-os {
+            overflow-wrap: anywhere;
+            min-width: 140px;
+            max-width: 280px;
+        }
+
+        .accuracy,
+        .vendor,
+        .port-version {
+            color: var(--muted);
+        }
+
+        .accuracy {
+            font-size: 0.8125rem;
+            margin-left: 4px;
+            white-space: nowrap;
+        }
+
+        .vendor {
+            display: block;
+            font-size: 0.8125rem;
+        }
+
+        .ports {
+            list-style: none;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px 14px;
+            min-width: 220px;
+        }
+
+        .ports li {
+            white-space: nowrap;
+        }
+
+        .port-version {
+            font-size: 0.8125rem;
+            margin-left: 4px;
+        }
+
+        .none {
+            color: var(--muted);
+        }
+
+        .detail-error {
+            color: var(--error);
+            font-size: 0.875rem;
+        }
+
+        .stage {
+            color: var(--focus);
+            font-size: 0.875rem;
+            margin-bottom: 4px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .ports li.new {
+            animation: port-in 1.2s ease-out;
+        }
+
+        @keyframes port-in {
+            from { background: var(--up-tint); }
+            to { background: transparent; }
+        }
+
+        tr.hidden {
+            display: none;
+        }
+
+        .empty {
+            padding: 32px 0;
+            color: var(--muted);
+            max-width: 70ch;
+        }
+
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+            clip-path: inset(50%);
+            white-space: nowrap;
+        }
+
+        @media (max-width: 720px) {
+            body {
+                padding: 24px 16px 48px;
+            }
+
+            .scan-row {
+                flex-wrap: wrap;
+            }
+
+            #network {
+                flex-basis: 100%;
+            }
+
+            .scan-row .btn {
+                flex: 1;
+                padding: 12px 20px;
+            }
+
+            .map-section {
+                grid-template-columns: minmax(0, 1fr);
+            }
+
+            .address-map {
+                grid-template-columns: repeat(var(--cols, 16), minmax(0, 22px));
+            }
+
+            .cell {
+                width: auto;
+            }
+
+            .legend .cell {
+                width: 12px;
+            }
+
+            #searchInput {
+                width: 100%;
+            }
+
+            .results-bar h2 {
+                flex-basis: 100%;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation: none !important;
+                transition: none !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <a class="skip-link" href="#results">Skip to hosts</a>
+
+    <div class="page">
+        <header>
+            <h1>Network scanner</h1>
+            <p>Find live hosts in a list of addresses or ranges, with their open ports, services and a best guess at the OS.</p>
+        </header>
+
+        <form class="scan-form" id="scanForm" novalidate>
+            <label for="network">Addresses or ranges</label>
+            <p class="hint" id="networkHint">Separate with commas or spaces. Use a single IP, a CIDR block like <span class="mono" translate="no">10.0.0.0/24</span>, or a range like <span class="mono" translate="no">10.0.0.1-50</span>.</p>
+            <div class="scan-row">
+                <input type="text"
+                       id="network"
+                       name="network"
+                       class="mono"
+                       placeholder="192.168.1.0/24, 10.0.0.1-20…"
+                       autocomplete="off"
+                       spellcheck="false"
+                       autocapitalize="off"
+                       translate="no"
+                       aria-describedby="networkHint validationMsg">
+                <button type="submit" class="btn btn-primary" id="scanBtn">Scan</button>
+                <button type="button" class="btn btn-secondary" id="cancelBtn" hidden>Cancel scan</button>
+            </div>
+            <fieldset class="mode" id="modeField">
+                <legend>Detail</legend>
+                <label class="mode-option">
+                    <input type="radio" name="mode" value="full" checked>
+                    <span><strong>Full</strong> Every service probe. Most accurate versions, can take minutes per host.</span>
+                </label>
+                <label class="mode-option">
+                    <input type="radio" name="mode" value="quick">
+                    <span><strong>Quick</strong> Common probes only. About 5× faster; rare services get a guessed name.</span>
+                </label>
+            </fieldset>
+            <div class="form-meta">
+                <p id="validationMsg" aria-live="polite"></p>
+                <p class="examples">
+                    Try
+                    <button type="button" class="example mono" data-value="192.168.1.0/24">192.168.1.0/24</button>
+                    <button type="button" class="example mono" data-value="10.0.0.1">10.0.0.1</button>
+                    <button type="button" class="example mono" data-value="172.16.0.0/16">172.16.0.0/16</button>
+                </p>
+            </div>
+        </form>
+
+        <div class="error-box" id="errorMsg" role="alert" hidden></div>
+
+        <section class="map-section" id="mapSection" aria-labelledby="readoutTitle" hidden>
+            <div class="address-map" id="addressMap"
+                 role="progressbar" aria-label="Scan progress"
+                 aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
+            <div class="readout">
+                <h2 id="readoutTitle" class="mono" translate="no"></h2>
+                <p id="statusMessage" aria-live="polite"></p>
+                <p id="timeMsg"></p>
+                <p id="checkingMsg" class="mono" translate="no" hidden></p>
+                <ul class="legend">
+                    <li><span class="cell active" aria-hidden="true"></span>Checking now</li>
+                    <li><span class="cell up" aria-hidden="true"></span>Host up</li>
+                    <li><span class="cell live" aria-hidden="true"></span>Up, details pending</li>
+                    <li><span class="cell scanned" aria-hidden="true"></span>No reply</li>
+                    <li><span class="cell" aria-hidden="true"></span>Not checked yet</li>
+                </ul>
+                <p class="map-note" id="mapNote" hidden></p>
+            </div>
+        </section>
+
+        <section class="results" id="results" aria-labelledby="resultsTitle" hidden>
+            <div class="results-bar">
+                <h2 id="resultsTitle">Hosts</h2>
+                <label class="sr-only" for="searchInput">Filter hosts</label>
+                <input type="search" id="searchInput" name="filter"
+                       placeholder="Filter by IP, name, port…"
+                       autocomplete="off" spellcheck="false">
+                <button type="button" class="btn btn-secondary" id="exportBtn" disabled>Export to Excel</button>
+            </div>
+
+            <div class="table-wrap" id="tableWrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th aria-sort="none"><button type="button" data-sort="ip">IP address <span class="sort-mark" aria-hidden="true"></span></button></th>
+                            <th aria-sort="none"><button type="button" data-sort="hostname">Hostname <span class="sort-mark" aria-hidden="true"></span></button></th>
+                            <th aria-sort="none"><button type="button" data-sort="os">Operating system <span class="sort-mark" aria-hidden="true"></span></button></th>
+                            <th aria-sort="none"><button type="button" data-sort="mac">MAC and vendor <span class="sort-mark" aria-hidden="true"></span></button></th>
+                            <th aria-sort="none"><button type="button" data-sort="ports">Open ports <span class="sort-mark" aria-hidden="true"></span></button></th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsBody"></tbody>
+                </table>
+            </div>
+
+            <p class="empty" id="noResults" hidden></p>
+        </section>
+    </div>
+
+    <script>
+        const MAX_CELLS = 256;
+        const SLOW_SCAN_THRESHOLD = 1024;
+        const XLSX_SRC = 'https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js';
+
+        const fmt = new Intl.NumberFormat();
+        const $ = id => document.getElementById(id);
+
+        const scanForm = $('scanForm');
+        const modeField = $('modeField');
+        const networkInput = $('network');
+        const scanBtn = $('scanBtn');
+        const cancelBtn = $('cancelBtn');
+        const validationMsg = $('validationMsg');
+        const errorMsg = $('errorMsg');
+        const mapSection = $('mapSection');
+        const addressMap = $('addressMap');
+        const readoutTitle = $('readoutTitle');
+        const statusMessage = $('statusMessage');
+        const checkingMsg = $('checkingMsg');
+        const timeMsg = $('timeMsg');
+        const mapNote = $('mapNote');
+        const results = $('results');
+        const resultsTitle = $('resultsTitle');
+        const resultsBody = $('resultsBody');
+        const tableWrap = $('tableWrap');
+        const noResults = $('noResults');
+        const searchInput = $('searchInput');
+        const exportBtn = $('exportBtn');
+
+        let allResults = [];
+        let currentScanId = null;
+        let eventSource = null;
+        let scanning = false;
+        let range = null;
+        let cells = [];
+        let sweep = { swept: 0, live: 0 };
+        const detailing = new Set();
+        let sortState = { column: null, direction: 'ascending' };
+
+        // ---------- Address helpers ----------
+
+        const IPV4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+        const MAX_TARGETS = 65536;
+
+        function ipToInt(ip) {
+            return ip.split('.').reduce((acc, octet) => (acc * 256) + Number(octet), 0);
+        }
+
+        function intToIp(n) {
+            return [24, 16, 8, 0].map(shift => Math.floor(n / 2 ** shift) % 256).join('.');
+        }
+
+        function parseIp(text) {
+            const m = IPV4.exec(text);
+            if (!m || m.slice(1).some(octet => Number(octet) > 255)) return null;
+            return ipToInt(text);
+        }
+
+        // One target as an inclusive [first, last] range of ints; mirrors parse_target() in app.py
+        function parseTarget(token) {
+            const invalid = `“${token}” isn’t a valid IPv4 address, range or CIDR block`;
+            if (token.includes('-')) {
+                const dash = token.indexOf('-');
+                const startText = token.slice(0, dash);
+                let endText = token.slice(dash + 1);
+                if (/^\d+$/.test(endText)) endText = startText.replace(/\.\d+$/, `.${endText}`);
+                const first = parseIp(startText);
+                const last = parseIp(endText);
+                if (first === null || last === null) throw new Error(invalid);
+                if (last < first) throw new Error(`“${token}” ends before it starts`);
+                return [first, last];
+            }
+            const [ipText, prefixText, extra] = token.split('/');
+            const ip = parseIp(ipText);
+            const prefix = prefixText === undefined ? 32 : Number(prefixText);
+            if (ip === null || extra !== undefined || !/^\d{0,2}$/.test(prefixText ?? '') || prefix > 32) {
+                throw new Error(invalid);
+            }
+            const size = 2 ** (32 - prefix);
+            const network = Math.floor(ip / size) * size;
+            return prefix >= 31 ? [network, network + size - 1] : [network + 1, network + size - 2];
+        }
+
+        // Sorted, merged ranges with each range's offset into the overall address list; mirrors parse_targets()
+        function parseTargets(text) {
+            const tokens = text.trim().split(/[\s,;]+/).filter(Boolean);
+            if (tokens.length === 0) throw new Error('Enter at least one address or range');
+            const ranges = tokens.map(parseTarget).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+
+            const merged = [];
+            for (const [first, last] of ranges) {
+                const prev = merged[merged.length - 1];
+                if (prev && first <= prev.last + 1) {
+                    prev.last = Math.max(prev.last, last);
+                } else {
+                    merged.push({ first, last });
+                }
+            }
+            let total = 0;
+            for (const r of merged) {
+                r.offset = total;
+                total += r.last - r.first + 1;
+            }
+            if (total > MAX_TARGETS) {
+                throw new Error(`That’s ${fmt.format(total)} addresses; the limit is ${fmt.format(MAX_TARGETS)} per scan`);
+            }
+            return { ranges: merged, total };
+        }
+
+        function plural(n, word, many = `${word}s`) {
+            return `${fmt.format(n)} ${n === 1 ? word : many}`;
+        }
+
+        // ---------- Validation ----------
+
+        let validationTimer = null;
+
+        function setValidation(message, isError) {
+            validationMsg.textContent = message;
+            validationMsg.classList.toggle('is-error', isError);
+            if (isError) {
+                networkInput.setAttribute('aria-invalid', 'true');
+            } else {
+                networkInput.removeAttribute('aria-invalid');
+            }
+        }
+
+        const EMPTY_MESSAGE = 'Enter at least one address or range.';
+
+        async function validate(value) {
+            if (!value) {
+                setValidation('', false);
+                return false;
+            }
+            let parsed;
+            try {
+                parsed = parseTargets(value);
+            } catch (error) {
+                setValidation(`${error.message}.`, true);
+                return false;
+            }
+            try {
+                const response = await fetch('/validate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ network: value })
+                });
+                const data = await response.json();
+                if (!data.valid) {
+                    setValidation(`${data.error}.`, true);
+                    return false;
+                }
+            } catch (error) {
+                setValidation('Couldn’t reach the scanner to check this address. Check the service is running.', true);
+                return false;
+            }
+            const { total } = parsed;
+            const note = total > SLOW_SCAN_THRESHOLD ? ' Ranges this large can take hours to scan.' : '';
+            setValidation(`${plural(total, 'address', 'addresses')} to check.${note}`, false);
+            return true;
+        }
+
+        networkInput.addEventListener('input', () => {
+            clearTimeout(validationTimer);
+            const value = networkInput.value.trim();
+            validationTimer = setTimeout(() => validate(value), 300);
+        });
+
+        document.querySelectorAll('.example').forEach(button => {
+            button.addEventListener('click', () => {
+                networkInput.value = button.dataset.value;
+                networkInput.focus();
+                validate(button.dataset.value);
+            });
+        });
+
+        scanForm.addEventListener('submit', async event => {
+            event.preventDefault();
+            if (scanning) return;
+            clearTimeout(validationTimer);
+            const value = networkInput.value.trim();
+            if (!value) {
+                setValidation(EMPTY_MESSAGE, true);
+                networkInput.focus();
+                return;
+            }
+            if (await validate(value)) {
+                startScan(value);
+            } else {
+                networkInput.focus();
+            }
+        });
+
+        // ---------- Address map ----------
+
+        function buildMap(network) {
+            range = parseTargets(network);
+            const cellSize = Math.ceil(range.total / MAX_CELLS);
+            const cellCount = Math.ceil(range.total / cellSize);
+            range.cellSize = cellSize;
+
+            addressMap.replaceChildren();
+            addressMap.style.setProperty('--cols', Math.min(16, cellCount));
+            cells = [];
+            sweep = { swept: 0, live: 0 };
+            detailing.clear();
+
+            for (let i = 0; i < cellCount; i++) {
+                const start = addressAt(i * cellSize);
+                const end = addressAt(Math.min((i + 1) * cellSize, range.total) - 1);
+                const cell = document.createElement('span');
+                cell.className = 'cell';
+                cell.title = cellSize === 1 ? intToIp(start) : `${intToIp(start)} to ${intToIp(end)}`;
+                cell.dataset.start = start;
+                addressMap.appendChild(cell);
+                cells.push(cell);
+            }
+
+            if (cellSize > 1) {
+                mapNote.textContent = `Each square covers ${plural(cellSize, 'address', 'addresses')}.`;
+                mapNote.hidden = false;
+            } else {
+                mapNote.hidden = true;
+            }
+        }
+
+        // Position in the scan's address list <-> address, across all target ranges
+        function addressAt(position) {
+            const r = range.ranges.find(r => position < r.offset + r.last - r.first + 1);
+            return r.first + position - r.offset;
+        }
+
+        function cellIndex(ip) {
+            const n = ipToInt(ip);
+            const r = range.ranges.find(r => n >= r.first && n <= r.last);
+            return r ? Math.floor((r.offset + n - r.first) / range.cellSize) : -1;
+        }
+
+        function cellsBetween(firstIp, lastIp) {
+            const from = Math.max(cellIndex(firstIp), 0);
+            const to = Math.min(cellIndex(lastIp), cells.length - 1);
+            return cells.slice(from, to + 1);
+        }
+
+        // Phase 1: the whole chunk blinks while it's swept for live hosts
+        function markSweeping(firstIp, lastIp) {
+            cellsBetween(firstIp, lastIp).forEach(cell => cell.classList.add('active'));
+            checkingMsg.textContent = firstIp === lastIp
+                ? `Looking for ${firstIp}`
+                : `Looking for live hosts in ${firstIp} to ${lastIp}`;
+            checkingMsg.hidden = false;
+        }
+
+        function markSwept(data) {
+            const liveCells = new Set(data.live.map(cellIndex));
+            const from = Math.max(cellIndex(data.first), 0);
+            cellsBetween(data.first, data.last).forEach((cell, offset) => {
+                cell.classList.remove('active');
+                cell.classList.add(liveCells.has(from + offset) ? 'live' : 'scanned');
+            });
+            sweep = { swept: data.swept, live: data.live_total };
+            updateReadout();
+            showDetailing();
+        }
+
+        // Phase 2: each live host blinks while its OS/service scan runs
+        function markDetailing(ip) {
+            detailing.add(ip);
+            const cell = cells[cellIndex(ip)];
+            if (cell && !cell.classList.contains('up')) cell.classList.add('active');
+            showDetailing();
+        }
+
+        function showDetailing() {
+            const ips = [...detailing];
+            if (ips.length === 0) {
+                checkingMsg.hidden = true;
+                return;
+            }
+            const shown = ips.slice(0, 3).join(', ');
+            const more = ips.length > 3 ? ` and ${fmt.format(ips.length - 3)} more` : '';
+            checkingMsg.textContent = `Getting details for ${shown}${more}`;
+            checkingMsg.hidden = false;
+        }
+
+        function clearChecking() {
+            addressMap.querySelectorAll('.cell.active').forEach(cell => cell.classList.remove('active'));
+            detailing.clear();
+            checkingMsg.hidden = true;
+        }
+
+        function markUp(host) {
+            const index = cellIndex(host.ip);
+            const cell = cells[index];
+            if (!cell) return;
+
+            let button = cell;
+            if (cell.tagName !== 'BUTTON') {
+                button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'cell up';
+                button.dataset.start = cell.dataset.start;
+                button.dataset.ip = host.ip;
+                button.addEventListener('click', () => revealRow(button.dataset.ip));
+                cell.replaceWith(button);
+                cells[index] = button;
+            }
+            const names = button.dataset.names ? button.dataset.names.split(',') : [];
+            names.push(host.ip);
+            button.dataset.names = names.join(',');
+            button.title = names.length === 1
+                ? `${host.ip} is up`
+                : `${names.length} hosts up: ${names.join(', ')}`;
+            button.setAttribute('aria-label', button.title);
+        }
+
+        function revealRow(ip) {
+            const row = rowFor(ip);
+            if (!row) return;
+            if (row.classList.contains('hidden')) {
+                searchInput.value = '';
+                applyFilter('');
+            }
+            const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            row.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' });
+            row.classList.remove('flash');
+            void row.offsetWidth;
+            row.classList.add('flash');
+        }
+
+        // ---------- Scan lifecycle ----------
+
+        function setScanning(active) {
+            scanning = active;
+            scanBtn.disabled = active;
+            scanBtn.textContent = active ? 'Scanning…' : 'Scan';
+            cancelBtn.hidden = !active;
+            networkInput.readOnly = active;
+            modeField.disabled = active;
+            if (!active) currentScanId = null;
+        }
+
+        function updateReadout() {
+            const found = allResults.length;
+            resultsTitle.textContent = found === 0 ? 'Hosts' : `Hosts (${fmt.format(found)})`;
+            let text = `${fmt.format(sweep.swept)} of ${plural(range.total, 'address', 'addresses')} checked, ${fmt.format(sweep.live)} up.`;
+            if (sweep.live > 0) {
+                text += ` Details ready for ${fmt.format(found)} of ${fmt.format(sweep.live)}.`;
+            }
+            statusMessage.textContent = text;
+            const percent = Math.round(((sweep.swept + found) / (range.total + sweep.live)) * 100);
+            addressMap.setAttribute('aria-valuenow', percent);
+        }
+
+        const MODE_LABELS = { full: 'Full scan', quick: 'Quick scan' };
+        let scanMode = 'full';
+
+        function startScan(network) {
+            scanMode = scanForm.elements.mode.value;
+            allResults = [];
+            resultsBody.replaceChildren();
+            searchInput.value = '';
+            exportBtn.disabled = true;
+            errorMsg.hidden = true;
+            noResults.hidden = true;
+            tableWrap.hidden = false;
+
+            buildMap(network);
+            readoutTitle.textContent = network;
+            statusMessage.textContent = 'Starting scan…';
+            mapSection.hidden = false;
+            results.hidden = false;
+            resultsTitle.textContent = 'Hosts';
+            setScanning(true);
+            startTimer();
+
+            eventSource = new EventSource(`/scan/stream?network=${encodeURIComponent(network)}&mode=${encodeURIComponent(scanMode)}`);
+            eventSource.onmessage = event => handleScanEvent(JSON.parse(event.data));
+            eventSource.onerror = () => {
+                eventSource.close();
+                if (scanning) {
+                    showError('Lost the connection to the scanner. Check the service is running, then scan again.');
+                    finishScan();
+                }
+            };
+        }
+
+        // ---------- Timer ----------
+
+        const clock = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        let scanStartedAt = null;
+        let timerId = null;
+
+        function formatDuration(ms) {
+            const total = Math.max(0, Math.round(ms / 1000));
+            const h = Math.floor(total / 3600);
+            const m = Math.floor((total % 3600) / 60);
+            const sec = total % 60;
+            const pad = n => String(n).padStart(2, '0');
+            if (h > 0) return `${h}h ${pad(m)}m ${pad(sec)}s`;
+            if (m > 0) return `${m}m ${pad(sec)}s`;
+            return `${sec}s`;
+        }
+
+        function renderRunningTime() {
+            timeMsg.textContent =
+                `${MODE_LABELS[scanMode]}, started ${clock.format(scanStartedAt)}, running for ${formatDuration(Date.now() - scanStartedAt)}`;
+        }
+
+        function startTimer() {
+            scanStartedAt = new Date();
+            clearInterval(timerId);
+            renderRunningTime();
+            timerId = setInterval(renderRunningTime, 1000);
+        }
+
+        function stopTimer(outcome) {
+            clearInterval(timerId);
+            timerId = null;
+            if (!scanStartedAt) return;
+            const end = new Date();
+            const took = formatDuration(end - scanStartedAt);
+            timeMsg.textContent = outcome === 'finished'
+                ? `${MODE_LABELS[scanMode]}, started ${clock.format(scanStartedAt)}, finished ${clock.format(end)}. Took ${took}.`
+                : `${MODE_LABELS[scanMode]}, started ${clock.format(scanStartedAt)}, stopped ${clock.format(end)} after ${took}.`;
+        }
+
+        function finishScan(outcome = 'stopped') {
+            setScanning(false);
+            stopTimer(outcome);
+            clearChecking();
+            resultsBody.querySelectorAll('tr.pending .stage').forEach(stage => {
+                stage.textContent = 'Stopped before details finished.';
+            });
+            if (resultsBody.rows.length === 0) {
+                tableWrap.hidden = true;
+            }
+        }
+
+        function handleScanEvent(data) {
+            switch (data.type) {
+                case 'started':
+                    currentScanId = data.scan_id;
+                    break;
+
+                case 'status':
+                    statusMessage.textContent = `Looking for live hosts in ${plural(data.total, 'address', 'addresses')}…`;
+                    break;
+
+                case 'checking':
+                    if (data.phase === 'detail') {
+                        markDetailing(data.first);
+                        if (data.data) addPendingRow(data.data);
+                    } else {
+                        markSweeping(data.first, data.last);
+                    }
+                    break;
+
+                case 'swept':
+                    markSwept(data);
+                    break;
+
+                case 'port':
+                    addLivePort(data);
+                    break;
+
+                case 'stage':
+                    updateStage(data);
+                    break;
+
+                case 'host':
+                    addHost(data.data);
+                    markUp(data.data);
+                    detailing.delete(data.data.ip);
+                    showDetailing();
+                    updateReadout();
+                    break;
+
+                case 'complete':
+                    eventSource.close();
+                    statusMessage.textContent =
+                        `Done. ${plural(data.total_found, 'host')} up out of ${plural(data.total_scanned, 'address', 'addresses')} checked.`;
+                    if (data.total_found === 0) {
+                        noResults.textContent =
+                            `Nothing in ${readoutTitle.textContent} answered. Hosts that drop pings and filter every port won’t show up; check you have the right range.`;
+                        noResults.hidden = false;
+                    }
+                    finishScan('finished');
+                    break;
+
+                case 'error':
+                    eventSource.close();
+                    showError(`The scan stopped: ${data.message}`);
+                    finishScan();
+                    break;
+
+                case 'cancelled':
+                    eventSource.close();
+                    finishScan();
+                    break;
+            }
+        }
+
+        cancelBtn.addEventListener('click', () => {
+            if (!scanning) return;
+            eventSource.close();
+            if (currentScanId) {
+                fetch(`/scan/cancel/${encodeURIComponent(currentScanId)}`, { method: 'POST' });
+            }
+            statusMessage.textContent = allResults.length
+                ? `Scan cancelled. The ${plural(allResults.length, 'host')} found so far are listed below.`
+                : 'Scan cancelled.';
+            finishScan();
+        });
+
+        window.addEventListener('beforeunload', event => {
+            if (scanning) {
+                event.preventDefault();
+                event.returnValue = '';
+            }
+        });
+
+        function showError(message) {
+            errorMsg.textContent = message;
+            errorMsg.hidden = false;
+        }
+
+        // ---------- Results table ----------
+
+        function el(tag, className, text) {
+            const node = document.createElement(tag);
+            if (className) node.className = className;
+            if (text !== undefined) node.textContent = text;
+            return node;
+        }
+
+        function present(value) {
+            return value && value !== 'N/A' && value !== 'Unknown';
+        }
+
+        function rowFor(ip) {
+            return resultsBody.querySelector(`tr[data-ip="${CSS.escape(ip)}"]`);
+        }
+
+        function placeRow(row, existing) {
+            if (existing) {
+                existing.replaceWith(row);
+            } else {
+                resultsBody.appendChild(row);
+            }
+            const term = searchInput.value.toLowerCase().trim();
+            row.classList.toggle('hidden', term !== '' && !row.dataset.search.includes(term));
+            if (sortState.column) sortTable();
+        }
+
+        function addHost(host) {
+            allResults.push(host);
+            const existing = rowFor(host.ip);
+            const row = createRow(host);
+            placeRow(row, existing);
+            if (existing) row.classList.add('flash');
+            exportBtn.disabled = false;
+        }
+
+        // A host whose detail scan is running: shows what the sweep knows, then fills ports in live
+        function addPendingRow(info) {
+            if (rowFor(info.ip)) return;
+            const row = createRow({ ...info, os: 'Unknown', os_accuracy: 'N/A', open_ports: [] });
+            row.classList.add('pending');
+            row.cells[2].replaceChildren(el('span', 'none', 'Pending'));
+            row.cells[4].replaceChildren(el('p', 'stage', 'Starting…'), el('ul', 'ports'));
+            tableWrap.hidden = false;
+            placeRow(row, null);
+        }
+
+        const STAGE_LABELS = {
+            ports: 'Finding open ports',
+            services: 'Identifying services',
+            os: 'Detecting OS'
+        };
+
+        function updateStage(data) {
+            const row = rowFor(data.ip);
+            if (!row || !row.classList.contains('pending')) return;
+            const percent = data.percent === undefined ? '' : `, ${Math.round(data.percent)}%`;
+            row.querySelector('.stage').textContent = `${STAGE_LABELS[data.stage]}${percent}…`;
+        }
+
+        function addLivePort(data) {
+            const row = rowFor(data.ip);
+            if (!row || !row.classList.contains('pending')) return;
+            const list = row.querySelector('ul.ports');
+            const item = el('li', 'new');
+            item.dataset.port = data.port;
+            item.appendChild(el('span', 'mono', `${data.port}/${data.protocol}`));
+            const after = [...list.children].find(li => Number(li.dataset.port) > data.port);
+            list.insertBefore(item, after || null);
+            row.dataset.ports = list.children.length;
+            row.dataset.search += ` ${data.port}/${data.protocol}`;
+        }
+
+        function createRow(host) {
+            const row = document.createElement('tr');
+            const ports = host.open_ports.map(p => `${p.port}/${p.service} ${p.version}`);
+            row.dataset.ip = host.ip;
+            row.dataset.hostname = host.hostname;
+            row.dataset.os = host.os;
+            row.dataset.mac = host.mac;
+            row.dataset.ports = host.open_ports.length;
+            row.dataset.search = [host.ip, host.hostname, host.os, host.mac, host.vendor, ...ports]
+                .join(' ').toLowerCase();
+
+            row.appendChild(el('td', 'cell-ip mono', host.ip));
+            const hostname = el('td', 'cell-host');
+            hostname.appendChild(present(host.hostname)
+                ? document.createTextNode(host.hostname)
+                : el('span', 'none', 'None'));
+            row.appendChild(hostname);
+
+            const os = el('td', 'cell-os');
+            if (present(host.os)) {
+                os.append(host.os);
+                if (present(host.os_accuracy)) {
+                    os.appendChild(el('span', 'accuracy', `${host.os_accuracy} match`));
+                }
+            } else {
+                os.appendChild(el('span', 'none', 'Unknown'));
+            }
+            row.appendChild(os);
+
+            const mac = el('td');
+            if (present(host.mac)) {
+                mac.appendChild(el('span', 'mono', host.mac));
+                if (present(host.vendor)) mac.appendChild(el('span', 'vendor', host.vendor));
+            } else {
+                mac.appendChild(el('span', 'none', 'Not visible'));
+            }
+            row.appendChild(mac);
+
+            const portsCell = el('td');
+            if (host.open_ports.length) {
+                const list = el('ul', 'ports');
+                host.open_ports.forEach(p => {
+                    const item = el('li');
+                    item.appendChild(el('span', 'mono', `${p.port}/${p.service}`));
+                    if (p.version) item.appendChild(el('span', 'port-version', p.version));
+                    list.appendChild(item);
+                });
+                portsCell.appendChild(list);
+            } else {
+                portsCell.appendChild(host.detail_error
+                    ? el('span', 'detail-error', `Couldn’t get details: ${host.detail_error}`)
+                    : el('span', 'none', 'None open'));
+            }
+            row.appendChild(portsCell);
+
+            return row;
+        }
+
+        // ---------- Filter ----------
+
+        let filterTimer = null;
+
+        function applyFilter(term) {
+            resultsBody.querySelectorAll('tr').forEach(row => {
+                row.classList.toggle('hidden', term !== '' && !row.dataset.search.includes(term));
+            });
+        }
+
+        searchInput.addEventListener('input', () => {
+            clearTimeout(filterTimer);
+            filterTimer = setTimeout(() => applyFilter(searchInput.value.toLowerCase().trim()), 150);
+        });
+
+        // ---------- Sort ----------
+
+        document.querySelectorAll('th button[data-sort]').forEach(button => {
+            button.addEventListener('click', () => {
+                const column = button.dataset.sort;
+                sortState.direction = sortState.column === column && sortState.direction === 'ascending'
+                    ? 'descending'
+                    : 'ascending';
+                sortState.column = column;
+
+                document.querySelectorAll('th').forEach(th => {
+                    th.setAttribute('aria-sort', 'none');
+                    th.querySelector('.sort-mark').textContent = '';
+                });
+                const th = button.closest('th');
+                th.setAttribute('aria-sort', sortState.direction);
+                th.querySelector('.sort-mark').textContent = sortState.direction === 'ascending' ? '▲' : '▼';
+                sortTable();
+            });
+        });
+
+        function sortTable() {
+            const { column, direction } = sortState;
+            const key = row => {
+                if (column === 'ip') return ipToInt(row.dataset.ip);
+                if (column === 'ports') return Number(row.dataset.ports);
+                const value = row.dataset[column];
+                return present(value) ? value : null;
+            };
+            const rows = Array.from(resultsBody.querySelectorAll('tr'));
+            rows.sort((a, b) => {
+                const av = key(a);
+                const bv = key(b);
+                if (av === null) return bv === null ? 0 : 1;
+                if (bv === null) return -1;
+                const cmp = typeof av === 'number' ? av - bv : av.localeCompare(bv);
+                return direction === 'ascending' ? cmp : -cmp;
+            });
+            resultsBody.append(...rows);
+        }
+
+        // ---------- Export ----------
+
+        let xlsxLoading = null;
+
+        function loadXlsx() {
+            if (window.XLSX) return Promise.resolve();
+            if (!xlsxLoading) {
+                xlsxLoading = new Promise((resolve, reject) => {
+                    const script = document.createElement('script');
+                    script.src = XLSX_SRC;
+                    script.onload = resolve;
+                    script.onerror = () => {
+                        xlsxLoading = null;
+                        reject(new Error('load failed'));
+                    };
+                    document.head.appendChild(script);
+                });
+            }
+            return xlsxLoading;
+        }
+
+        exportBtn.addEventListener('click', async () => {
+            if (allResults.length === 0) return;
+            const label = exportBtn.textContent;
+            exportBtn.disabled = true;
+            exportBtn.textContent = 'Preparing…';
+            try {
+                await loadXlsx();
+            } catch (error) {
+                showError('Couldn’t load the Excel exporter from cdn.sheetjs.com. Check this machine can reach the internet, then try again.');
+                exportBtn.textContent = label;
+                exportBtn.disabled = false;
+                return;
+            }
+
+            const rows = allResults.map((host, index) => ({
+                '#': index + 1,
+                'IP Address': host.ip,
+                'Hostname': host.hostname,
+                'Status': host.state.toUpperCase(),
+                'Operating System': host.os,
+                'OS Accuracy': host.os_accuracy,
+                'MAC Address': host.mac,
+                'Vendor': host.vendor,
+                'Open Ports': host.open_ports.map(p =>
+                    `${p.port}/${p.service}${p.version ? ' (' + p.version + ')' : ''}`
+                ).join(', ') || 'None'
+            }));
+
+            const sheet = XLSX.utils.json_to_sheet(rows);
+            sheet['!cols'] = [5, 15, 25, 8, 40, 12, 18, 20, 50].map(wch => ({ wch }));
+            const book = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(book, sheet, 'Scan Results');
+
+            const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
+            const network = readoutTitle.textContent.replace(/[^0-9.-]+/g, '_').slice(0, 60);
+            XLSX.writeFile(book, `network_scan_${network}_${timestamp}.xlsx`);
+
+            exportBtn.textContent = label;
+            exportBtn.disabled = false;
+        });
+    </script>
+</body>
+</html>
