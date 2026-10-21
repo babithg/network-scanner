@@ -1,0 +1,17 @@
+.git
+.gitignore
+.dockerignore
+backup/
+engine_code/
+__pycache__/
+*.py[cod]
+*.log
+*.xlsx
+.vscode/
+.idea/
+.claude/
+CLAUDE.md
+README.md
+networkscan.service
+docker-compose.yml
+Dockerfile

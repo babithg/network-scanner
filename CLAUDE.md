@@ -8,9 +8,9 @@ A single-page Flask web UI that wraps `nmap` (via `python-nmap`) to scan an IP o
 
 ## Environment and running
 
-- `engine_code/` is the Python 3.12 **virtualenv**, not source code. The shell's `python3` resolves to `engine_code/bin/python3`, so `pip install` here modifies the venv the production service uses.
+- Production on this server runs as the **`network-scanner` Docker container** (see "Service management"). `engine_code/` is a Python 3.12 **virtualenv**, not source code, used for the dev server and Playwright tests; the shell's `python3` resolves to it.
 - Root is required: nmap runs with `-O -sV --osscan-guess`, and OS detection needs raw sockets.
-- To run a dev copy without disturbing the service on :5000, use the **same environment as the systemd unit** (its `PATH` is only the venv's `bin`, so anything that shells out to a bare `nmap` works in a normal shell but fails in production; this shipped once):
+- To run a dev copy without disturbing production on :5000, use a **minimal `PATH`** like the old systemd unit had (only the venv's `bin`), so anything that shells out to a bare `nmap` fails in testing instead of in production; this shipped once. Before deploying, also test the built image (see "Container"):
 
   ```bash
   nohup env -i PATH=/root/workspace/network_scanner/engine_code/bin HOME=/root \
@@ -19,22 +19,28 @@ A single-page Flask web UI that wraps `nmap` (via `python-nmap`) to scan an IP o
 
   Subprocess calls must use `NMAP_PATH` (python-nmap's resolved path), never `'nmap'`.
 
-- Only scan `127.0.0.x` (every loopback address answers on Linux, so `127.0.0.0/29` gives 6 live hosts) or the reserved `192.0.2.0/24` documentation range when testing; real ranges hit actual hosts. Loopback scans probe the production app on :5000 too, which logs a burst of harmless `code 400, Bad request` errors from nmap's `-sV` probes. Check `journalctl -u networkscan` for scans in progress before restarting the service.
+- Only scan `127.0.0.x` (every loopback address answers on Linux, so `127.0.0.0/29` gives 6 live hosts) or the reserved `192.0.2.0/24` documentation range when testing; real ranges hit actual hosts. Loopback scans probe the production app on :5000 too, which logs a burst of harmless `code 400, Bad request` errors from nmap's `-sV` probes. Check `docker logs network-scanner` for scans in progress before restarting.
+
+## Container
+
+`Dockerfile` (python:3.12-slim-bookworm + Debian's nmap, gunicorn `gthread` with **one worker** and 64 threads: `active_scans` is in-process state, and each SSE stream holds a thread for its scan) and `docker-compose.yml` (`network_mode: host`, `cap_drop: ALL`, `cap_add: NET_RAW`). Tested: `NET_RAW` alone covers SYN scan, OS detection and ARP; `NET_ADMIN` and `--privileged` aren't needed. Host networking is what gives MAC/vendor and ARP discovery; on a bridge network scans work but go through NAT. `HOST`/`PORT` env vars set the bind address. README.md has the user-facing run instructions.
+
+To test an image without touching the service on :5000, run it on another port with host networking, e.g. `docker run -d --name ns-test --network host -e PORT=5056 --cap-drop ALL --cap-add NET_RAW <image>`, and point the Playwright tests at 5056.
 
 ## Service management
 
-Production runs as the systemd unit `networkscan` (defined in `networkscan.service`), as root, executing `app.py` with the venv's Python on `0.0.0.0:5000`. It has `Restart=always`, so killing the process just respawns it; use `systemctl` to stop it. You are permitted to stop, start, restart and check the status of this service.
+Production runs as the Docker container `network-scanner`, defined by `docker-compose.yml` in this directory (host networking, port 5000, `restart: unless-stopped`; Docker is enabled at boot). You are permitted to stop, start, restart, rebuild and check the status of this container.
 
 ```bash
-systemctl status networkscan      # state, PID, recent log lines
-systemctl stop networkscan
-systemctl start networkscan
-systemctl restart networkscan     # required after editing app.py or templates/index.html
-journalctl -u networkscan -n 50   # logs (add -f to follow)
+docker compose ps                         # state and health
+docker compose logs -f --tail 50          # logs ("Starting full/quick scan", "Scan complete")
+docker compose up -d --build              # deploy: rebuild the image and recreate the container (required after any code change)
+docker compose restart
+docker compose stop / docker compose start
 curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:5000/   # health check, expect 200
 ```
 
-If the unit file itself is edited, copy it to `/etc/systemd/system/networkscan.service` (where it is installed) and run `systemctl daemon-reload` before restarting.
+The old systemd unit (`networkscan.service`, installed at `/etc/systemd/system/networkscan.service`) is kept **stopped and disabled** for rollback: `docker compose down && systemctl enable --now networkscan`. Never run both: they share port 5000.
 
 ## Architecture
 

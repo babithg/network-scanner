@@ -1,0 +1,16 @@
+services:
+  network-scanner:
+    build: .
+    image: network-scanner:latest
+    container_name: network-scanner
+    # Host networking lets nmap ARP-sweep the local subnet and report MAC addresses and vendors.
+    # Linux only; see README.md for running on Docker's default bridge network instead.
+    network_mode: host
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "5000"
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_RAW     # raw sockets: SYN scan, OS detection, ICMP and ARP probes (tested: nothing else needed)
+    restart: unless-stopped
